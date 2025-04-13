@@ -1,5 +1,6 @@
 use egui::{Color32, Pos2, Shape, Stroke, Ui, Widget, WidgetInfo, WidgetType, emath};
 
+/// A circular progress bar to indicate an percentage of time remaining.
 #[derive(Default)]
 pub struct Timer {
     radius: Option<f32>,
@@ -7,6 +8,12 @@ pub struct Timer {
 }
 
 impl Timer {
+    /// Creates a [`Timer`] with the default values.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Sets the radius of the timer that will be shown.
     pub fn radius(mut self, radius: f32) -> Self {
         self.radius = Some(radius);
         self
@@ -30,6 +37,7 @@ impl Widget for Timer {
     }
 }
 
+/// Responsible for drawing the widget specified via a [`Timer`].
 struct TimerWidget {
     radius: f32,
     progress: f32,
@@ -39,6 +47,8 @@ impl TimerWidget {
     const START_ANGLE: f64 = 140f64.to_radians();
     const END_ANGLE: f64 = 400f64.to_radians();
 
+    /// Draws the timer widget centered at the given position.
+    /// The timer widget extends out by its [`radius`](Self::radius) in a circle.
     fn paint_at(self, ui: &Ui, position: Pos2) {
         let points = 20;
 
