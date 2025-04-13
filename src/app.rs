@@ -24,6 +24,10 @@ impl eframe::App for Gui {
             Timer::default().radius(50.0).progress(self.progress).ui(ui);
         });
 
-        self.progress += 0.01;
+        // Dummy code to simulate an active timer.
+        self.progress += 0.1;
+        if self.progress > 1.0 {
+            self.progress -= 1.0;
+        }
     }
 }

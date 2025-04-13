@@ -1,9 +1,8 @@
 use image::GenericImageView;
 
-#[derive(Default)]
-pub(crate) struct TimerTray {
-    checkbox: bool,
-}
+use crate::GLOBAL_CANCEL;
+
+pub(crate) struct TimerTray;
 
 impl ksni::Tray for TimerTray {
     fn id(&self) -> String {
@@ -14,9 +13,9 @@ impl ksni::Tray for TimerTray {
         use ksni::menu::*;
         vec![
             CheckmarkItem {
-                label: "Checkable".into(),
-                checked: self.checkbox,
-                activate: Box::new(|this: &mut Self| this.checkbox = !this.checkbox),
+                label: "Quit".into(),
+                checked: GLOBAL_CANCEL.is_cancelled(),
+                activate: Box::new(|_| GLOBAL_CANCEL.cancel()),
                 ..Default::default()
             }
             .into(),
