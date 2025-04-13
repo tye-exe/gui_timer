@@ -51,8 +51,19 @@ fn gui_management(runtime: &Runtime, mut ctx_receiver: UnboundedReceiver<egui::C
             return;
         };
 
+        update_gui(ctx.clone());
         close_gui_when_cancel(ctx);
     });
+}
+
+/// Repaints the GUI at regular intervals.
+fn update_gui(ctx: egui::Context) {
+    tokio::spawn(GLOBAL_CANCEL.run_until_cancelled(async move {
+        loop {
+            time::sleep(Duration::from_millis(250)).await;
+            ctx.request_repaint();
+        }
+    }));
 }
 
 /// Closes the GUI when [`GLOBAL_CANCEL`] is cancelled.
