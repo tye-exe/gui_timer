@@ -1,0 +1,9 @@
+[package]
+name = "gui_timer"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+egui = "0.31.1"
+eframe = { version = "0.31.1", features = ["persistence"] }
+serde = "1.0.219"

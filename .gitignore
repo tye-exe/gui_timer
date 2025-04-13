@@ -1,0 +1,5 @@
+# Rust out
+/target
+
+# Envirnoment
+.direnv
