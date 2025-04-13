@@ -36,16 +36,33 @@ struct TimerWidget {
 }
 
 impl TimerWidget {
-    const START_ANGLE: f64 = 150f64.to_radians();
+    const START_ANGLE: f64 = 140f64.to_radians();
     const END_ANGLE: f64 = 400f64.to_radians();
 
     fn paint_at(self, ui: &Ui, position: Pos2) {
         let points = 20;
 
+        let outline_points: Vec<Pos2> = (0..=points)
+            .map(|i| {
+                let angle = emath::lerp(
+                    Self::START_ANGLE..=Self::END_ANGLE,
+                    i as f64 / points as f64,
+                );
+                let (sin, cos) = angle.sin_cos();
+                position + self.radius * egui::vec2(cos as f32, sin as f32)
+            })
+            .collect();
+
+        // Outline
+        ui.painter().add(Shape::line(
+            outline_points,
+            Stroke::new(5.0, ui.visuals().widgets.noninteractive.bg_stroke.color),
+        ));
+
         let angle_offset: f64 = (Self::END_ANGLE - Self::START_ANGLE) * self.progress as f64;
         let current_angle = Self::START_ANGLE + angle_offset;
 
-        let points: Vec<Pos2> = (0..=points)
+        let progress_points: Vec<Pos2> = (0..=points)
             .map(|i| {
                 let angle = emath::lerp(current_angle..=Self::END_ANGLE, i as f64 / points as f64);
                 let (sin, cos) = angle.sin_cos();
@@ -53,8 +70,11 @@ impl TimerWidget {
             })
             .collect();
 
-        ui.painter()
-            .add(Shape::line(points, Stroke::new(3.0, Color32::LIGHT_BLUE)));
+        // Progress
+        ui.painter().add(Shape::line(
+            progress_points,
+            Stroke::new(3.0, Color32::LIGHT_BLUE),
+        ));
     }
 }
 
