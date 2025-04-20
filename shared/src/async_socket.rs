@@ -1,4 +1,4 @@
-use std::num::TryFromIntError;
+use std::{future::Future, num::TryFromIntError};
 
 use crate::{BINCODE_CONF, GuiAction};
 use bincode::{
@@ -20,7 +20,7 @@ enum AsyncReadError {
 }
 
 trait AsyncReadObj<Obj> {
-    async fn read_obj(&mut self) -> Result<Obj, AsyncReadError>;
+    fn read_obj(&mut self) -> impl Future<Output = Result<Obj, AsyncReadError>>;
 }
 
 // Didn't implement as generic Obj due to types being annoying.
@@ -29,20 +29,22 @@ impl<To> AsyncReadObj<GuiAction> for To
 where
     To: AsyncReadExt + Unpin,
 {
-    async fn read_obj(&mut self) -> Result<GuiAction, AsyncReadError> {
-        let len: usize = self.read_u64().await?.try_into()?;
+    fn read_obj(&mut self) -> impl Future<Output = Result<GuiAction, AsyncReadError>> {
+        async {
+            let len: usize = self.read_u64().await?.try_into()?;
 
-        let mut buf: Box<[u8]> = std::iter::from_fn(|| Some(0u8)).take(len).collect();
+            let mut buf: Box<[u8]> = std::iter::from_fn(|| Some(0u8)).take(len).collect();
 
-        let read_exact = self.read_exact(&mut buf).await?;
-        if read_exact != len as usize {
-            return Err(AsyncReadError::BufferMissMatch {
-                expected: len,
-                read: read_exact,
-            });
+            let read_exact = self.read_exact(&mut buf).await?;
+            if read_exact != len as usize {
+                return Err(AsyncReadError::BufferMissMatch {
+                    expected: len,
+                    read: read_exact,
+                });
+            }
+
+            Ok(bincode::decode_from_slice_with_context(&buf, BINCODE_CONF, ())?.0)
         }
-
-        Ok(bincode::decode_from_slice_with_context(&buf, BINCODE_CONF, ())?.0)
     }
 }
 
@@ -55,7 +57,7 @@ enum AsyncWriteError {
 }
 
 trait AsyncWriteObj<Obj> {
-    async fn write_obj(&mut self, data: Obj) -> Result<(), AsyncWriteError>;
+    fn write_obj(&mut self, data: Obj) -> impl Future<Output = Result<(), AsyncWriteError>>;
 }
 
 impl<Obj, To> AsyncWriteObj<Obj> for To
@@ -63,12 +65,14 @@ where
     Obj: Encode,
     To: AsyncWriteExt + Unpin,
 {
-    async fn write_obj(&mut self, data: Obj) -> Result<(), AsyncWriteError> {
-        let data = bincode::encode_to_vec(data, BINCODE_CONF)?;
-        self.write_all(&data.len().to_ne_bytes()).await?;
-        self.write_all(data.as_slice()).await?;
+    fn write_obj(&mut self, data: Obj) -> impl Future<Output = Result<(), AsyncWriteError>> {
+        async {
+            let data = bincode::encode_to_vec(data, BINCODE_CONF)?;
+            self.write_all(&data.len().to_ne_bytes()).await?;
+            self.write_all(data.as_slice()).await?;
 
-        Ok(())
+            Ok(())
+        }
     }
 }
 
