@@ -1,25 +1,21 @@
-use std::{
-    io::{Read, Write},
-    num::TryFromIntError,
-};
+pub mod async_socket;
 
-use ::tokio::io::AsyncReadExt;
+use std::io::{Read, Write};
+
 use bincode::{
     Decode, Encode,
     config::{self, Configuration},
-    error::{DecodeError, EncodeError},
+    error::EncodeError,
 };
-use interprocess::{
-    bound_util::RefTokioAsyncRead,
-    local_socket::{Stream, tokio::Stream as tokio_stream},
-};
-use serde::{Deserialize, Serialize};
+use interprocess::local_socket::Stream;
 
-const BINCODE_CONF: Configuration<config::BigEndian, config::Fixint> = config::standard()
+type BincodeConfiguration = Configuration<config::BigEndian, config::Fixint>;
+
+const BINCODE_CONF: BincodeConfiguration = config::standard()
     .with_big_endian()
     .with_fixed_int_encoding();
 
-#[derive(Serialize, Deserialize, Decode, Encode)]
+#[derive(Decode, Encode)]
 #[cfg_attr(test, derive(PartialEq, Debug))]
 enum GuiAction {
     Close,
@@ -53,8 +49,8 @@ trait WriteObj<T> {
 impl WriteObj<GuiAction> for Stream {
     fn write_obj(&mut self, data: GuiAction) -> Result<(), WriteErr> {
         let data = bincode::encode_to_vec(data, BINCODE_CONF)?;
-        self.write(&data.len().to_ne_bytes())?;
-        self.write(data.as_slice())?;
+        self.write_all(&data.len().to_ne_bytes())?;
+        self.write_all(data.as_slice())?;
 
         Ok(())
     }
