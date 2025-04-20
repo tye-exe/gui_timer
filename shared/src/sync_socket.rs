@@ -1,9 +1,9 @@
-use std::io::{Read, Write};
+use bincode::{
+    Decode, Encode,
+    error::{DecodeError, EncodeError},
+};
 
-use bincode::error::{DecodeError, EncodeError};
-use interprocess::local_socket::Stream;
-
-use crate::{BINCODE_CONF, GuiAction};
+use crate::{BINCODE_CONF, BincodeConfiguration};
 
 /// An error encountered when reading a data structure with [`ReadObj`].
 #[derive(thiserror::Error, Debug)]
@@ -17,13 +17,18 @@ pub enum ReadError {
 }
 
 /// For reading data structures from a comptable source.
-pub trait ReadObj<T> {
+pub trait ReadObj {
     /// Reads the data structure from this source.
-    fn read_obj(&mut self) -> Result<T, ReadError>;
+    fn read_obj<Obj>(&mut self) -> Result<Obj, ReadError>
+    where
+        Obj: Decode<BincodeConfiguration>;
 }
 
-impl ReadObj<GuiAction> for Stream {
-    fn read_obj(&mut self) -> Result<GuiAction, ReadError> {
+impl<From: std::io::Read> ReadObj for From {
+    fn read_obj<Obj>(&mut self) -> Result<Obj, ReadError>
+    where
+        Obj: Decode<BincodeConfiguration>,
+    {
         self.read_exact(&mut [0; (usize::BITS / 8) as usize])?;
 
         Ok(bincode::decode_from_std_read_with_context(
@@ -46,13 +51,13 @@ pub enum WriteError {
 }
 
 /// For writing data structure to a compatible output.
-pub trait WriteObj<T> {
+pub trait WriteObj {
     /// Writes the given data to this output.
-    fn write_obj(&mut self, data: T) -> Result<(), WriteError>;
+    fn write_obj<Obj: Encode>(&mut self, data: Obj) -> Result<(), WriteError>;
 }
 
-impl WriteObj<GuiAction> for Stream {
-    fn write_obj(&mut self, data: GuiAction) -> Result<(), WriteError> {
+impl<To: std::io::Write> WriteObj for To {
+    fn write_obj<Obj: Encode>(&mut self, data: Obj) -> Result<(), WriteError> {
         let data = bincode::encode_to_vec(data, BINCODE_CONF)?;
         self.write_all(&data.len().to_ne_bytes())?;
         self.write_all(data.as_slice())?;
@@ -91,7 +96,7 @@ mod tests {
 
         let mut connect = listener.accept().unwrap();
 
-        let gui_action = connect.read_obj().expect("Can read");
+        let gui_action = connect.read_obj::<GuiAction>().expect("Can read");
 
         assert_eq!(gui_action, GuiAction::Open);
     }

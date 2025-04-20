@@ -1,8 +1,8 @@
 use std::{future::Future, num::TryFromIntError};
 
-use crate::{BINCODE_CONF, GuiAction};
+use crate::{BINCODE_CONF, BincodeConfiguration};
 use bincode::{
-    Encode,
+    Decode, Encode,
     error::{DecodeError, EncodeError},
 };
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -24,21 +24,24 @@ pub enum AsyncReadError {
 }
 
 /// Reads a data structure from a compatible asynchronous source.
-pub trait AsyncReadObj<Obj> {
+pub trait AsyncReadObj {
     /// Reads the data structure from this source asynchronously.
     ///
     /// # Cancel Safety
     /// This method is **not** cancel safe.
-    fn read_obj(&mut self) -> impl Future<Output = Result<Obj, AsyncReadError>>;
+    fn read_obj<Obj>(&mut self) -> impl Future<Output = Result<Obj, AsyncReadError>>
+    where
+        Obj: Decode<BincodeConfiguration>;
 }
 
-// Didn't implement as generic Obj due to types being annoying.
-// Might do it in the future.
-impl<To> AsyncReadObj<GuiAction> for To
+impl<From> AsyncReadObj for From
 where
-    To: AsyncReadExt + Unpin,
+    From: AsyncReadExt + Unpin,
 {
-    fn read_obj(&mut self) -> impl Future<Output = Result<GuiAction, AsyncReadError>> {
+    fn read_obj<Obj>(&mut self) -> impl Future<Output = Result<Obj, AsyncReadError>>
+    where
+        Obj: Decode<BincodeConfiguration>,
+    {
         async {
             let len: usize = self.read_u64().await?.try_into()?;
 
@@ -52,7 +55,7 @@ where
                 });
             }
 
-            Ok(bincode::decode_from_slice_with_context(&buf, BINCODE_CONF, ())?.0)
+            Ok(bincode::decode_from_slice_with_context(&buf, BINCODE_CONF, BINCODE_CONF)?.0)
         }
     }
 }
@@ -69,20 +72,24 @@ pub enum AsyncWriteError {
 }
 
 /// Writes a data structure to a compatible asynchronous output.
-pub trait AsyncWriteObj<Obj> {
+pub trait AsyncWriteObj {
     /// Writes the data structure to this output asynchronously.
     ///
     /// # Cancel Safety
     /// This method is **not** cancel safe.
-    fn write_obj(&mut self, data: Obj) -> impl Future<Output = Result<(), AsyncWriteError>>;
+    fn write_obj<Obj>(&mut self, data: Obj) -> impl Future<Output = Result<(), AsyncWriteError>>
+    where
+        Obj: Encode;
 }
 
-impl<Obj, To> AsyncWriteObj<Obj> for To
+impl<To> AsyncWriteObj for To
 where
-    Obj: Encode,
     To: AsyncWriteExt + Unpin,
 {
-    fn write_obj(&mut self, data: Obj) -> impl Future<Output = Result<(), AsyncWriteError>> {
+    fn write_obj<Obj>(&mut self, data: Obj) -> impl Future<Output = Result<(), AsyncWriteError>>
+    where
+        Obj: Encode,
+    {
         async {
             let data = bincode::encode_to_vec(data, BINCODE_CONF)?;
             self.write_all(&data.len().to_ne_bytes()).await?;
@@ -128,7 +135,7 @@ mod tests {
         // Reader
         task::spawn(async move {
             let mut accept = listener.accept().await.unwrap();
-            let read_obj = accept.read_obj().await.unwrap();
+            let read_obj = accept.read_obj::<GuiAction>().await.unwrap();
             assert_eq!(read_obj, GuiAction::Open)
         });
     }
