@@ -1,3 +1,3 @@
 [workspace]
 resolver = "3"
-members = ["gui_timer", "shared", "timer_tray"]
+members = ["gui_timer", "comms", "timer_tray"]
