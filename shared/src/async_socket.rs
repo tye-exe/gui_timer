@@ -7,19 +7,28 @@ use bincode::{
 };
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
+/// An error encountered when trying to read data from an asynchronous source with [`AsyncReadObj`].
 #[derive(thiserror::Error, Debug)]
-enum AsyncReadError {
+pub enum AsyncReadError {
     #[error(transparent)]
     IOError(#[from] std::io::Error),
+    /// Machine needs to be 64 bit or higher.
     #[error("Cannot convert u64 to usize. Is this a 32-bit machine?")]
     IntConvert(#[from] TryFromIntError),
+    /// A more fine variant of [`AsyncReadError::InvalidData`].
     #[error("The number of bytes read does not match the number of bytes requested.")]
     BufferMissMatch { expected: usize, read: usize },
+    /// The data received cannot be decoded into the specified type.
     #[error("Data received is not valid.")]
     InvalidData(#[from] DecodeError),
 }
 
-trait AsyncReadObj<Obj> {
+/// Reads a data structure from a compatible asynchronous source.
+pub trait AsyncReadObj<Obj> {
+    /// Reads the data structure from this source asynchronously.
+    ///
+    /// # Cancel Safety
+    /// This method is **not** cancel safe.
     fn read_obj(&mut self) -> impl Future<Output = Result<Obj, AsyncReadError>>;
 }
 
@@ -48,15 +57,23 @@ where
     }
 }
 
+/// An error encountered when trying to write data to an asynchronous output with [`AsyncWriteObj`].
 #[derive(thiserror::Error, Debug)]
-enum AsyncWriteError {
+pub enum AsyncWriteError {
+    /// Unable to encode the data for writing.
     #[error(transparent)]
     Encode(#[from] EncodeError),
+    /// Unable to write data to the output.
     #[error(transparent)]
     Write(#[from] std::io::Error),
 }
 
-trait AsyncWriteObj<Obj> {
+/// Writes a data structure to a compatible asynchronous output.
+pub trait AsyncWriteObj<Obj> {
+    /// Writes the data structure to this output asynchronously.
+    ///
+    /// # Cancel Safety
+    /// This method is **not** cancel safe.
     fn write_obj(&mut self, data: Obj) -> impl Future<Output = Result<(), AsyncWriteError>>;
 }
 
