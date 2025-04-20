@@ -109,7 +109,10 @@ mod tests {
     use tempfile::TempDir;
     use tokio::task;
 
-    use super::*;
+    use crate::{
+        GuiAction,
+        async_socket::{AsyncReadObj as _, AsyncWriteObj as _},
+    };
 
     #[tokio::test]
     async fn end_to_end() {

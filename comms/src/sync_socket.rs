@@ -69,12 +69,15 @@ impl<To: std::io::Write> WriteObj for To {
 #[cfg(test)]
 mod tests {
     use interprocess::local_socket::{
-        GenericFilePath, ListenerOptions, ToFsName as _,
+        GenericFilePath, ListenerOptions, Stream, ToFsName as _,
         traits::{Listener, Stream as _},
     };
     use tempfile::TempDir;
 
-    use super::*;
+    use crate::{
+        GuiAction,
+        sync_socket::{ReadObj as _, WriteObj as _},
+    };
 
     #[test]
     fn end_to_end() {
