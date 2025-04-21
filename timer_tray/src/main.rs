@@ -94,7 +94,7 @@ fn spawn_gui() {
         return;
     };
     exe_path.pop();
-    exe_path.push("gui_timer");
+    exe_path.push("gui");
     std::process::Command::new(exe_path).spawn().unwrap();
 }
 

@@ -1398,7 +1398,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "gui_timer"
+name = "gui"
 version = "0.1.0"
 dependencies = [
  "comms",
