@@ -7,11 +7,10 @@ pub mod async_socket;
 pub mod sync_socket;
 
 /// Actions to be perfomced by the timer GUI.
-#[derive(Decode, Encode)]
-#[cfg_attr(test, derive(PartialEq, Debug))]
+#[derive(Decode, Encode, PartialEq)]
+#[cfg_attr(test, derive(Debug))]
 pub enum GuiAction {
     Close,
-    Open,
 }
 
 /// A type alias for the bincode configuration used in this codebase.

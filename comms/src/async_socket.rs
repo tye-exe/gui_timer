@@ -132,14 +132,14 @@ mod tests {
         // Writer
         task::spawn(async move {
             let mut connect = Stream::connect(name).await.unwrap();
-            connect.write_obj(GuiAction::Open).await.unwrap();
+            connect.write_obj(GuiAction::Close).await.unwrap();
         });
 
         // Reader
         task::spawn(async move {
             let mut accept = listener.accept().await.unwrap();
             let read_obj = accept.read_obj::<GuiAction>().await.unwrap();
-            assert_eq!(read_obj, GuiAction::Open)
+            assert_eq!(read_obj, GuiAction::Close)
         });
     }
 }

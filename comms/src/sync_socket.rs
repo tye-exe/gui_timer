@@ -94,13 +94,13 @@ mod tests {
 
         Stream::connect(name.clone())
             .unwrap()
-            .write_obj(GuiAction::Open)
+            .write_obj(GuiAction::Close)
             .expect("Can write");
 
         let mut connect = listener.accept().unwrap();
 
         let gui_action = connect.read_obj::<GuiAction>().expect("Can read");
 
-        assert_eq!(gui_action, GuiAction::Open);
+        assert_eq!(gui_action, GuiAction::Close);
     }
 }
