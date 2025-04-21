@@ -1,8 +1,40 @@
+use comms::GuiAction;
 use image::GenericImageView;
+use tokio::sync::mpsc::Sender;
 
-use crate::GLOBAL_CANCEL;
+use crate::{GLOBAL_CANCEL, GuiState, spawn_gui, until_global_cancel};
 
-pub(crate) struct TimerTray;
+pub(crate) struct TimerTray {
+    sender: Sender<GuiAction>,
+
+    state: GuiState,
+}
+
+impl TimerTray {
+    pub(crate) fn new(sender: Sender<GuiAction>) -> Self {
+        Self {
+            sender,
+            state: GuiState::Open,
+        }
+    }
+
+    /// Opens or closes the GUI depending on the current state.
+    fn toggle_gui(&mut self) {
+        match self.state {
+            GuiState::Open => {
+                let sender = self.sender.clone();
+                tokio::spawn(async move {
+                    until_global_cancel!(sender.send(GuiAction::Close)).unwrap();
+                });
+            }
+            GuiState::Closed => {
+                spawn_gui();
+            }
+        }
+
+        self.state = self.state.opposite();
+    }
+}
 
 impl ksni::Tray for TimerTray {
     fn id(&self) -> String {
@@ -13,9 +45,24 @@ impl ksni::Tray for TimerTray {
         use ksni::menu::*;
         vec![
             CheckmarkItem {
+                label: "Gui".into(),
+                checked: match self.state {
+                    GuiState::Closed => false,
+                    GuiState::Open => true,
+                },
+                activate: Box::new(Self::toggle_gui),
+                ..Default::default()
+            }
+            .into(),
+            StandardItem {
                 label: "Quit".into(),
-                checked: GLOBAL_CANCEL.is_cancelled(),
-                activate: Box::new(|_| GLOBAL_CANCEL.cancel()),
+                activate: Box::new(|this: &mut Self| {
+                    let sender = this.sender.clone();
+                    tokio::spawn(async move {
+                        until_global_cancel!(sender.send(GuiAction::Close)).unwrap();
+                        GLOBAL_CANCEL.cancel();
+                    });
+                }),
                 ..Default::default()
             }
             .into(),
