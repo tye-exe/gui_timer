@@ -48,11 +48,19 @@ fn gui_comms(mut receiver: Receiver<GuiAction>) {
                 .expect("Unable to listen for gui communication.");
 
             while let Some(action) = until_global_cancel!(receiver.recv()) {
+                let mut stop = false;
                 if action == GuiAction::Close {
-                    stream.write_obj::<GuiAction>(action).await.unwrap();
+                    stop = true;
+                }
+
+                let _ = stream
+                    .write_obj::<GuiAction>(action)
+                    .await
+                    .inspect_err(|e| eprintln!("The GUI was closed unexpectedly? {e}"));
+
+                if stop {
                     break;
                 }
-                stream.write_obj::<GuiAction>(action).await.unwrap();
             }
         }
     });

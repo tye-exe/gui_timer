@@ -59,7 +59,8 @@ impl ksni::Tray for TimerTray {
                 activate: Box::new(|this: &mut Self| {
                     let sender = this.sender.clone();
                     tokio::spawn(async move {
-                        until_global_cancel!(sender.send(GuiAction::Close)).unwrap();
+                        let _ = until_global_cancel!(sender.send(GuiAction::Close))
+                            .inspect_err(|e| eprintln!("The GUI was closed unexpectedly? {e}"));
                         GLOBAL_CANCEL.cancel();
                     });
                 }),
