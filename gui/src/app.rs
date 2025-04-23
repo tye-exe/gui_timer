@@ -8,12 +8,11 @@ use egui::Widget;
 use interprocess::local_socket::traits::RecvHalf;
 use serde::{Deserialize, Serialize};
 
-use crate::timer::Timer;
+use crate::timer::{Timer, TimerData};
 
 const APP_KEY: &str = "GUI_TIMER";
 
 pub(crate) struct Gui<Receiver: RecvHalf> {
-    progress: f32,
     receiver: Option<Receiver>,
 
     persistent: Persistent,
@@ -21,14 +20,16 @@ pub(crate) struct Gui<Receiver: RecvHalf> {
 
 impl<Receiver: RecvHalf> Gui<Receiver> {
     pub fn new(cc: &eframe::CreationContext<'_>, receiver: Option<Receiver>) -> Self {
-        let persistent = cc
+        let mut persistent: Persistent = cc
             .storage
             .map(|storage| eframe::get_value(storage, APP_KEY))
             .flatten()
             .unwrap_or_default();
 
+        // TODO(tye): remove after debugging.
+        persistent.timer_data = vec![TimerData::new(Duration::from_secs(3))];
+
         Self {
-            progress: 0.0,
             receiver,
             persistent,
         }
@@ -55,14 +56,17 @@ impl<Receiver: RecvHalf> Gui<Receiver> {
 impl<Receiver: RecvHalf> eframe::App for Gui<Receiver> {
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
         egui::CentralPanel::default().show(ctx, |ui| {
-            Timer::default().radius(50.0).progress(self.progress).ui(ui);
-        });
+            for timer_data in self.persistent.timer_data.iter_mut() {
+                Timer::new(timer_data).radius(50.0).ui(ui);
+            }
 
-        // Dummy code to simulate an active timer.
-        self.progress += 0.1;
-        if self.progress > 1.0 {
-            self.progress -= 1.0;
-        }
+            if ui.button("Reset").clicked() {
+                let _ = self.persistent.timer_data.pop();
+                self.persistent
+                    .timer_data
+                    .push(TimerData::new(Duration::from_secs(5)));
+            }
+        });
 
         // Ensure the GUI still updates when the user is not interacting with it.
         ctx.request_repaint_after(Duration::from_millis(250));
@@ -86,4 +90,6 @@ impl<Receiver: RecvHalf> eframe::App for Gui<Receiver> {
 // For persistent data
 // TODO(tye): finish later
 #[derive(Deserialize, Serialize, Default)]
-struct Persistent {}
+struct Persistent {
+    timer_data: Vec<TimerData>,
+}
