@@ -11,8 +11,6 @@ mod app;
 mod timer;
 
 fn main() {
-    println!("GuiTest");
-
     let receiver = create_channel(TO_GUI_SOCK)
         .inspect_err(|e| eprintln!("Error creating receiver for tray actions: {e}"))
         .ok()

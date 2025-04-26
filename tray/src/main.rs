@@ -41,7 +41,7 @@ async fn main() {
     handle.shutdown().await;
 }
 
-/// Spawns a new task that forwards data to the current GUI.
+/// Forwards actions to the GUI.
 async fn gui_send(mut receiver: Receiver<GuiAction>) {
     let listener = create_listener(TO_GUI_SOCK);
     loop {
@@ -56,7 +56,7 @@ async fn gui_send(mut receiver: Receiver<GuiAction>) {
             let _ = stream
                 .write_obj::<GuiAction>(action)
                 .await
-                .inspect_err(|e| eprintln!("The GUI was closed unexpectedly? {e}"));
+                .inspect_err(|e| log::error!("The GUI was closed unexpectedly? {e}"));
 
             if stop {
                 break;
@@ -65,6 +65,7 @@ async fn gui_send(mut receiver: Receiver<GuiAction>) {
     }
 }
 
+/// Forwards responses from the GUI.
 async fn gui_receive(sender: Sender<GuiResponse>) {
     let listener = create_listener(TO_TRAY_SOCK);
 
@@ -76,7 +77,7 @@ async fn gui_receive(sender: Sender<GuiResponse>) {
             let response = match until_global_cancel!(stream.read_obj()) {
                 Ok(response) => response,
                 Err(err) => {
-                    eprintln!("Error reading GUI responses: {err}");
+                    log::error!("Error reading GUI response: {err}");
                     break;
                 }
             };
