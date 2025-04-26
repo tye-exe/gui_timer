@@ -1,4 +1,4 @@
-use std::{future::Future, num::TryFromIntError};
+use std::future::Future;
 
 use crate::{BINCODE_CONF, BincodeConfiguration};
 use bincode::{
@@ -12,9 +12,6 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 pub enum AsyncReadError {
     #[error(transparent)]
     IOError(#[from] std::io::Error),
-    /// Machine needs to be 64 bit or higher.
-    #[error("Cannot convert u64 to usize. Is this a 32-bit machine?")]
-    IntConvert(#[from] TryFromIntError),
     /// A more fine variant of [`AsyncReadError::InvalidData`].
     #[error("The number of bytes read does not match the number of bytes requested.")]
     BufferMissMatch { expected: usize, read: usize },
@@ -43,9 +40,11 @@ where
         Obj: Decode<BincodeConfiguration>,
     {
         async {
-            let len: usize = self.read_u64().await?.try_into()?;
+            let buf = &mut [0; (usize::BITS / 8) as usize];
+            self.read_exact(buf).await?;
+            let len = usize::from_ne_bytes(*buf);
 
-            let mut buf: Box<[u8]> = std::iter::from_fn(|| Some(0u8)).take(len).collect();
+            let mut buf = vec![0u8; len].into_boxed_slice();
 
             let read_exact = self.read_exact(&mut buf).await?;
             if read_exact != len as usize {
