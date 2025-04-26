@@ -6,12 +6,21 @@ use bincode::{
 pub mod async_socket;
 pub mod sync_socket;
 
-/// Actions to be perfomced by the timer GUI.
-#[derive(Decode, Encode, PartialEq)]
-#[cfg_attr(test, derive(Debug))]
+/// Actions to be performed by the timer GUI.
+#[derive(Decode, Encode, PartialEq, Debug)]
 pub enum GuiAction {
     Close,
 }
+
+/// Actions that have been performed by the timer GUI.
+#[derive(Decode, Encode, PartialEq, Debug)]
+pub enum GuiResponse {
+    Opened,
+    Closed,
+}
+
+pub const TO_TRAY_SOCK: &str = "timer_gui_to_tray.sock";
+pub const TO_GUI_SOCK: &str = "timer_tray_to_gui.sock";
 
 /// A type alias for the bincode configuration used in this codebase.
 type BincodeConfiguration = Configuration<config::BigEndian, config::Fixint>;

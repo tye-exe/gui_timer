@@ -1,6 +1,7 @@
-use comms::GuiAction;
+use comms::{GuiAction, GuiResponse};
 use image::GenericImageView;
-use tokio::sync::mpsc::Sender;
+use ksni::Handle;
+use tokio::sync::mpsc::{Receiver, Sender};
 
 use crate::{GLOBAL_CANCEL, GuiState, spawn_gui, until_global_cancel};
 
@@ -14,25 +15,27 @@ impl TimerTray {
     pub(crate) fn new(sender: Sender<GuiAction>) -> Self {
         Self {
             sender,
-            state: GuiState::Open,
+            state: GuiState::OpenRequested,
         }
     }
 
     /// Opens or closes the GUI depending on the current state.
     fn toggle_gui(&mut self) {
         match self.state {
-            GuiState::Open => {
+            GuiState::Opened => {
                 let sender = self.sender.clone();
                 tokio::spawn(async move {
-                    until_global_cancel!(sender.send(GuiAction::Close)).unwrap();
+                    until_global_cancel!(sender.send(GuiAction::Close))
+                        .expect("Cannot send action to GUI.");
                 });
+                self.state = GuiState::CloseRequested;
             }
             GuiState::Closed => {
                 spawn_gui();
+                self.state = GuiState::OpenRequested;
             }
+            GuiState::OpenRequested | GuiState::CloseRequested => {}
         }
-
-        self.state = self.state.opposite();
     }
 }
 
@@ -48,7 +51,9 @@ impl ksni::Tray for TimerTray {
                 label: "Gui".into(),
                 checked: match self.state {
                     GuiState::Closed => false,
-                    GuiState::Open => true,
+                    GuiState::Opened => true,
+                    GuiState::OpenRequested => true,
+                    GuiState::CloseRequested => false,
                 },
                 activate: Box::new(Self::toggle_gui),
                 ..Default::default()
@@ -91,5 +96,21 @@ impl ksni::Tray for TimerTray {
             height: height as i32,
             data,
         }]
+    }
+}
+
+pub(crate) async fn update_tray(handle: Handle<TimerTray>, mut rx_from_gui: Receiver<GuiResponse>) {
+    loop {
+        let response =
+            until_global_cancel!(rx_from_gui.recv()).expect("Unable to listen for GUI response.");
+
+        until_global_cancel!(handle.update(|tray| {
+            tray.state = match response {
+                GuiResponse::Closed => GuiState::Closed,
+                GuiResponse::Opened => GuiState::Opened,
+            };
+        }));
+
+        log::debug!("Tray tick loop.");
     }
 }

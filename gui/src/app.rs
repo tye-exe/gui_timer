@@ -5,21 +5,34 @@ use comms::{
     sync_socket::{ReadError, ReadObj as _},
 };
 use egui::Widget;
-use interprocess::local_socket::traits::RecvHalf;
+use interprocess::local_socket::traits::{RecvHalf, SendHalf};
 use serde::{Deserialize, Serialize};
 
 use crate::timer::{Timer, TimerData};
 
 const APP_KEY: &str = "GUI_TIMER";
 
-pub(crate) struct Gui<Receiver: RecvHalf> {
+pub(crate) struct Gui<'comms, Receiver, Sender>
+where
+    Receiver: RecvHalf,
+    Sender: SendHalf,
+{
     receiver: Option<Receiver>,
+    sender: Option<&'comms Sender>,
 
     persistent: Persistent,
 }
 
-impl<Receiver: RecvHalf> Gui<Receiver> {
-    pub fn new(cc: &eframe::CreationContext<'_>, receiver: Option<Receiver>) -> Self {
+impl<'comms, Receiver, Sender> Gui<'comms, Receiver, Sender>
+where
+    Receiver: RecvHalf,
+    Sender: SendHalf,
+{
+    pub fn new(
+        cc: &eframe::CreationContext<'_>,
+        receiver: Option<Receiver>,
+        sender: Option<&'comms Sender>,
+    ) -> Self {
         let mut persistent: Persistent = cc
             .storage
             .map(|storage| eframe::get_value(storage, APP_KEY))
@@ -31,6 +44,7 @@ impl<Receiver: RecvHalf> Gui<Receiver> {
 
         Self {
             receiver,
+            sender,
             persistent,
         }
     }
@@ -53,7 +67,11 @@ impl<Receiver: RecvHalf> Gui<Receiver> {
     }
 }
 
-impl<Receiver: RecvHalf> eframe::App for Gui<Receiver> {
+impl<'comms, Receiver, Sender> eframe::App for Gui<'comms, Receiver, Sender>
+where
+    Receiver: RecvHalf,
+    Sender: SendHalf,
+{
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
         egui::CentralPanel::default().show(ctx, |ui| {
             for timer_data in self.persistent.timer_data.iter_mut() {

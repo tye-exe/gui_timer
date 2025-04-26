@@ -2,68 +2,96 @@
 
 use std::sync::LazyLock;
 
-use comms::GuiAction;
-use comms::async_socket::AsyncWriteObj;
+use comms::async_socket::{AsyncReadObj, AsyncWriteObj};
+use comms::{GuiAction, GuiResponse, TO_GUI_SOCK, TO_TRAY_SOCK};
 use interprocess::local_socket::traits::tokio::Listener;
 use interprocess::local_socket::{
     GenericFilePath, GenericNamespaced, ListenerOptions, NameType, ToFsName, ToNsName,
 };
 
 use ksni::TrayMethods;
-use tokio::sync::mpsc::{self, Receiver};
-use tokio::task;
+use tokio::sync::mpsc::{self, Receiver, Sender};
 use tokio_util::sync::CancellationToken;
-use tray_icon::TimerTray;
+use tray_icon::{TimerTray, update_tray};
 
 mod tray_icon;
-
-const SEND: &str = "timer_tray_to_gui.sock";
-const RECEIVE: &str = "timer_gui_to_tray.sock";
 
 /// The [`CancellationToken`] that is responsible for shutting down the entire application when it is cancelled.
 static GLOBAL_CANCEL: LazyLock<CancellationToken> = LazyLock::new(|| CancellationToken::new());
 
 #[tokio::main]
 async fn main() {
-    let (sender, receiver) = mpsc::channel(4);
+    env_logger::init();
 
-    gui_comms(receiver);
+    let (tx_to_gui, rx_to_gui) = mpsc::channel(4);
+    let (tx_from_gui, rx_from_gui) = mpsc::channel(4);
+
+    tokio::spawn(gui_send(rx_to_gui));
+    tokio::spawn(gui_receive(tx_from_gui));
     spawn_gui();
 
-    let handle = TimerTray::new(sender)
+    let handle = TimerTray::new(tx_to_gui)
         .spawn()
         .await
         .expect("Unable to start taskbar tray.");
+
+    tokio::spawn(update_tray(handle.clone(), rx_from_gui));
 
     GLOBAL_CANCEL.cancelled().await;
     handle.shutdown().await;
 }
 
 /// Spawns a new task that forwards data to the current GUI.
-fn gui_comms(mut receiver: Receiver<GuiAction>) {
-    task::spawn(async move {
-        let listener = create_listener(SEND);
-        loop {
-            let mut stream = until_global_cancel!(listener.accept())
-                .expect("Unable to listen for gui communication.");
+async fn gui_send(mut receiver: Receiver<GuiAction>) {
+    let listener = create_listener(TO_GUI_SOCK);
+    loop {
+        let mut stream = until_global_cancel!(listener.accept())
+            .expect("Unable to listen for GUI communication.");
 
-            while let Some(action) = until_global_cancel!(receiver.recv()) {
-                let mut stop = false;
-                if action == GuiAction::Close {
-                    stop = true;
-                }
+        while let Some(action) = until_global_cancel!(receiver.recv()) {
+            let stop = matches!(action, GuiAction::Close);
 
-                let _ = stream
-                    .write_obj::<GuiAction>(action)
-                    .await
-                    .inspect_err(|e| eprintln!("The GUI was closed unexpectedly? {e}"));
+            log::debug!("Sent Action: {action:?}");
 
-                if stop {
-                    break;
-                }
+            let _ = stream
+                .write_obj::<GuiAction>(action)
+                .await
+                .inspect_err(|e| eprintln!("The GUI was closed unexpectedly? {e}"));
+
+            if stop {
+                break;
             }
         }
-    });
+    }
+}
+
+async fn gui_receive(sender: Sender<GuiResponse>) {
+    let listener = create_listener(TO_TRAY_SOCK);
+
+    loop {
+        let mut stream = until_global_cancel!(listener.accept())
+            .expect("Unable to listen for gui communication.");
+
+        loop {
+            let response = match until_global_cancel!(stream.read_obj()) {
+                Ok(response) => response,
+                Err(err) => {
+                    eprintln!("Error reading GUI responses: {err}");
+                    break;
+                }
+            };
+
+            let stop = matches!(response, GuiResponse::Closed);
+
+            log::debug!("Received Response: {response:?}");
+
+            until_global_cancel!(sender.send(response)).expect("Unable to listen for GUI response");
+
+            if stop {
+                break;
+            }
+        }
+    }
 }
 
 /// Creates a listener that listens for connections from the GUI.
@@ -83,17 +111,10 @@ fn create_listener(name: &'static str) -> interprocess::local_socket::tokio::Lis
 /// The state of the GUI.
 #[derive(Clone, Copy, PartialEq)]
 enum GuiState {
+    OpenRequested,
+    CloseRequested,
+    Opened,
     Closed,
-    Open,
-}
-
-impl GuiState {
-    fn opposite(self) -> Self {
-        match self {
-            GuiState::Closed => Self::Open,
-            GuiState::Open => Self::Closed,
-        }
-    }
 }
 
 /// Creates a new gui.
