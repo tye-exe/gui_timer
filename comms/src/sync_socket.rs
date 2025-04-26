@@ -29,7 +29,9 @@ impl<From: std::io::Read> ReadObj for From {
     where
         Obj: Decode<BincodeConfiguration>,
     {
-        self.read_exact(&mut [0; (usize::BITS / 8) as usize])?;
+        let buf = &mut [0; (usize::BITS / 8) as usize];
+        self.read_exact(buf)?;
+        log::debug!("Sync Read Len: {}", usize::from_ne_bytes(*buf));
 
         Ok(bincode::decode_from_std_read_with_context(
             self,
@@ -59,6 +61,7 @@ pub trait WriteObj {
 impl<To: std::io::Write> WriteObj for To {
     fn write_obj<Obj: Encode>(&mut self, data: Obj) -> Result<(), WriteError> {
         let data = bincode::encode_to_vec(data, BINCODE_CONF)?;
+        log::debug!("Async Write Len: {}", data.len());
         self.write_all(&data.len().to_ne_bytes())?;
         self.write_all(data.as_slice())?;
 

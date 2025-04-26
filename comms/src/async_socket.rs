@@ -26,6 +26,8 @@ pub trait AsyncReadObj {
     ///
     /// # Cancel Safety
     /// This method is **not** cancel safe.
+    ///
+    /// An arbitrary amount of data can be read and will be disguarded if this is cancelled.
     fn read_obj<Obj>(&mut self) -> impl Future<Output = Result<Obj, AsyncReadError>>
     where
         Obj: Decode<BincodeConfiguration>;
@@ -43,6 +45,7 @@ where
             let buf = &mut [0; (usize::BITS / 8) as usize];
             self.read_exact(buf).await?;
             let len = usize::from_ne_bytes(*buf);
+            log::debug!("Async Read Len: {len}");
 
             let mut buf = vec![0u8; len].into_boxed_slice();
 
@@ -76,6 +79,8 @@ pub trait AsyncWriteObj {
     ///
     /// # Cancel Safety
     /// This method is **not** cancel safe.
+    ///
+    /// An arbitrary amount of data can might have been sent if this is cancelled.
     fn write_obj<Obj>(&mut self, data: Obj) -> impl Future<Output = Result<(), AsyncWriteError>>
     where
         Obj: Encode;
@@ -91,6 +96,7 @@ where
     {
         async {
             let data = bincode::encode_to_vec(data, BINCODE_CONF)?;
+            log::debug!("Async Write Len: {}", data.len());
             self.write_all(&data.len().to_ne_bytes()).await?;
             self.write_all(data.as_slice()).await?;
 
