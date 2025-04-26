@@ -49,6 +49,12 @@ impl ksni::Tray for TimerTray {
         vec![
             CheckmarkItem {
                 label: "Gui".into(),
+                enabled: match self.state {
+                    GuiState::OpenRequested => false,
+                    GuiState::CloseRequested => false,
+                    GuiState::Opened => true,
+                    GuiState::Closed => true,
+                },
                 checked: match self.state {
                     GuiState::Closed => false,
                     GuiState::Opened => true,
