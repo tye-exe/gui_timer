@@ -37,6 +37,17 @@ impl TimerTray {
             GuiState::OpenRequested | GuiState::CloseRequested => {}
         }
     }
+
+    /// Quits the Gui and the tray.
+    fn quit(&mut self) {
+        let sender = self.sender.clone();
+        tokio::spawn(async move {
+            let _ = until_global_cancel!(sender.send(GuiAction::Close)).inspect_err(|e| {
+                log::error!("Internal tray communication was closed unexpectedly: {e}")
+            });
+            GLOBAL_CANCEL.cancel();
+        });
+    }
 }
 
 impl ksni::Tray for TimerTray {
@@ -67,14 +78,7 @@ impl ksni::Tray for TimerTray {
             .into(),
             StandardItem {
                 label: "Quit".into(),
-                activate: Box::new(|this: &mut Self| {
-                    let sender = this.sender.clone();
-                    tokio::spawn(async move {
-                        let _ = until_global_cancel!(sender.send(GuiAction::Close))
-                            .inspect_err(|e| log::error!("The GUI was closed unexpectedly? {e}"));
-                        GLOBAL_CANCEL.cancel();
-                    });
-                }),
+                activate: Box::new(Self::quit),
                 ..Default::default()
             }
             .into(),
