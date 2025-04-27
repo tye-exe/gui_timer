@@ -10,7 +10,7 @@ use interprocess::local_socket::{
 mod app;
 mod timer;
 
-fn launch_gui() {
+pub(crate) fn launch_gui() {
     let receiver = create_channel(TO_GUI_SOCK)
         .inspect_err(|e| eprintln!("Error creating receiver for tray actions: {e}"))
         .ok()

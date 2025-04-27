@@ -20,7 +20,7 @@ mod tray_icon;
 /// The [`CancellationToken`] that is responsible for shutting down the entire application when it is cancelled.
 static GLOBAL_CANCEL: LazyLock<CancellationToken> = LazyLock::new(|| CancellationToken::new());
 
-fn launch_tray() {
+pub(crate) fn launch_tray() {
     tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
@@ -124,12 +124,13 @@ enum GuiState {
 
 /// Creates a new gui.
 fn spawn_gui() {
-    let Ok(mut exe_path) = std::env::current_exe() else {
+    let Ok(exe_path) = std::env::current_exe() else {
         return;
     };
-    exe_path.pop();
-    exe_path.push("gui");
-    std::process::Command::new(exe_path).spawn().unwrap();
+    std::process::Command::new(exe_path)
+        .arg("--gui")
+        .spawn()
+        .unwrap();
 }
 
 /// Runs the given future until [`GLOBAL_CANCEL`] is cancelled.

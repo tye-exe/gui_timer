@@ -8,25 +8,19 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-# Shared
 interprocess = { version = "2.2.3", features = ["tokio"] }
-
-# GUI
 eframe = { version = "0.31.1", features = ["persistence"] }
 egui = "0.31.1"
 serde = "1.0.219"
-
-# Tray
 env_logger = "0.11.8"
 image = { version = "0.25.6", default-features = false, features = ["png"] }
 ksni = "0.3.1"
 log = "0.4.27"
 tokio = { version = "1.44.2", features = ["full"] }
 tokio-util = "0.7.14"
-
-# Comms
 bincode = { version = "2.0.1", features = ["serde"] }
 thiserror = "2.0.12"
+clap = { version = "4.5.37", features = ["derive"] }
 
 [dev-dependencies]
 tempfile = "3.19.1"
