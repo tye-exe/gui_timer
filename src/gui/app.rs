@@ -1,14 +1,16 @@
 use std::{io::ErrorKind, time::Duration};
 
-use comms::{
-    GuiAction,
-    sync_socket::{ReadError, ReadObj as _},
-};
 use egui::Widget;
 use interprocess::local_socket::traits::{RecvHalf, SendHalf};
 use serde::{Deserialize, Serialize};
 
-use crate::timer::{Timer, TimerData};
+use crate::{
+    comms::{
+        GuiAction,
+        sync_socket::{ReadError, ReadObj as _},
+    },
+    gui::timer::{Timer, TimerData},
+};
 
 const APP_KEY: &str = "GUI_TIMER";
 

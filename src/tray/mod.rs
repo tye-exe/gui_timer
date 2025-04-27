@@ -1,9 +1,10 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
 
+use crate::until_global_cancel;
 use std::sync::LazyLock;
 
-use comms::async_socket::{AsyncReadObj, AsyncWriteObj};
-use comms::{GuiAction, GuiResponse, TO_GUI_SOCK, TO_TRAY_SOCK};
+use crate::comms::async_socket::{AsyncReadObj, AsyncWriteObj};
+use crate::comms::{GuiAction, GuiResponse, TO_GUI_SOCK, TO_TRAY_SOCK};
 use interprocess::local_socket::traits::tokio::Listener;
 use interprocess::local_socket::{
     GenericFilePath, GenericNamespaced, ListenerOptions, NameType, ToFsName, ToNsName,
@@ -19,26 +20,29 @@ mod tray_icon;
 /// The [`CancellationToken`] that is responsible for shutting down the entire application when it is cancelled.
 static GLOBAL_CANCEL: LazyLock<CancellationToken> = LazyLock::new(|| CancellationToken::new());
 
-#[tokio::main]
-async fn main() {
-    env_logger::init();
+fn launch_tray() {
+    tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .unwrap()
+        .block_on(async {
+            let (tx_to_gui, rx_to_gui) = mpsc::channel(4);
+            let (tx_from_gui, rx_from_gui) = mpsc::channel(4);
 
-    let (tx_to_gui, rx_to_gui) = mpsc::channel(4);
-    let (tx_from_gui, rx_from_gui) = mpsc::channel(4);
+            tokio::spawn(gui_send(rx_to_gui));
+            tokio::spawn(gui_receive(tx_from_gui));
+            spawn_gui();
 
-    tokio::spawn(gui_send(rx_to_gui));
-    tokio::spawn(gui_receive(tx_from_gui));
-    spawn_gui();
+            let handle = TimerTray::new(tx_to_gui)
+                .spawn()
+                .await
+                .expect("Unable to start taskbar tray.");
 
-    let handle = TimerTray::new(tx_to_gui)
-        .spawn()
-        .await
-        .expect("Unable to start taskbar tray.");
+            tokio::spawn(update_tray(handle.clone(), rx_from_gui));
 
-    tokio::spawn(update_tray(handle.clone(), rx_from_gui));
-
-    GLOBAL_CANCEL.cancelled().await;
-    handle.shutdown().await;
+            GLOBAL_CANCEL.cancelled().await;
+            handle.shutdown().await;
+        });
 }
 
 /// Forwards actions to the GUI.
@@ -132,7 +136,10 @@ fn spawn_gui() {
 #[macro_export]
 macro_rules! until_global_cancel {
     ($future:expr) => {
-        (match crate::GLOBAL_CANCEL.run_until_cancelled($future).await {
+        (match crate::tray::GLOBAL_CANCEL
+            .run_until_cancelled($future)
+            .await
+        {
             Some(var) => var,
             None => return,
         })

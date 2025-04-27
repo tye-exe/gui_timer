@@ -737,19 +737,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "comms"
-version = "0.1.0"
-dependencies = [
- "bincode",
- "interprocess",
- "log",
- "serde",
- "tempfile",
- "thiserror 2.0.12",
- "tokio",
-]
-
-[[package]]
 name = "concurrent-queue"
 version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1487,14 +1474,22 @@ dependencies = [
 ]
 
 [[package]]
-name = "gui"
+name = "gui_timer"
 version = "0.1.0"
 dependencies = [
- "comms",
+ "bincode",
  "eframe",
  "egui",
+ "env_logger",
+ "image",
  "interprocess",
+ "ksni",
+ "log",
  "serde",
+ "tempfile",
+ "thiserror 2.0.12",
+ "tokio",
+ "tokio-util",
 ]
 
 [[package]]
@@ -3203,20 +3198,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e672c95779cf947c5311f83787af4fa8fffd12fb27e4993211a84bdfd9610f9c"
 dependencies = [
  "once_cell",
-]
-
-[[package]]
-name = "tray"
-version = "0.1.0"
-dependencies = [
- "comms",
- "env_logger",
- "image",
- "interprocess",
- "ksni",
- "log",
- "tokio",
- "tokio-util",
 ]
 
 [[package]]

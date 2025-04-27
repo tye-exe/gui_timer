@@ -1,9 +1,12 @@
-use comms::{GuiAction, GuiResponse};
+use crate::{
+    comms::{GuiAction, GuiResponse},
+    until_global_cancel,
+};
 use image::GenericImageView;
 use ksni::Handle;
 use tokio::sync::mpsc::{Receiver, Sender};
 
-use crate::{GLOBAL_CANCEL, GuiState, spawn_gui, until_global_cancel};
+use super::{GLOBAL_CANCEL, GuiState, spawn_gui};
 
 pub(crate) struct TimerTray {
     sender: Sender<GuiAction>,

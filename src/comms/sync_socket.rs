@@ -3,7 +3,7 @@ use bincode::{
     error::{DecodeError, EncodeError},
 };
 
-use crate::{BINCODE_CONF, BincodeConfiguration};
+use super::{BINCODE_CONF, BincodeConfiguration};
 
 /// An error encountered when reading a data structure with [`ReadObj`].
 #[derive(thiserror::Error, Debug)]
@@ -77,7 +77,7 @@ mod tests {
     };
     use tempfile::TempDir;
 
-    use crate::{
+    use crate::comms::{
         GuiAction,
         sync_socket::{ReadObj as _, WriteObj as _},
     };

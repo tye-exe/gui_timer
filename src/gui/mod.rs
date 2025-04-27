@@ -1,7 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
 
+use crate::comms::{GuiResponse, TO_GUI_SOCK, TO_TRAY_SOCK, sync_socket::WriteObj};
 use app::Gui;
-use comms::{GuiResponse, TO_GUI_SOCK, TO_TRAY_SOCK, sync_socket::WriteObj};
 use interprocess::local_socket::{
     GenericFilePath, GenericNamespaced, NameType as _, Stream, ToFsName as _, ToNsName as _,
     traits::Stream as _,
@@ -10,7 +10,7 @@ use interprocess::local_socket::{
 mod app;
 mod timer;
 
-fn main() {
+fn launch_gui() {
     let receiver = create_channel(TO_GUI_SOCK)
         .inspect_err(|e| eprintln!("Error creating receiver for tray actions: {e}"))
         .ok()

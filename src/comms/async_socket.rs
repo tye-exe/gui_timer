@@ -1,6 +1,6 @@
 use std::future::Future;
 
-use crate::{BINCODE_CONF, BincodeConfiguration};
+use super::{BINCODE_CONF, BincodeConfiguration};
 use bincode::{
     Decode, Encode,
     error::{DecodeError, EncodeError},
@@ -114,7 +114,7 @@ mod tests {
     use tempfile::TempDir;
     use tokio::task;
 
-    use crate::{
+    use crate::comms::{
         GuiAction,
         async_socket::{AsyncReadObj as _, AsyncWriteObj as _},
     };
