@@ -1,4 +1,7 @@
-use std::{io::ErrorKind, time::Duration};
+use std::{
+    io::{ErrorKind, Read},
+    time::Duration,
+};
 
 use egui::Widget;
 use interprocess::local_socket::traits::{RecvHalf, SendHalf};
@@ -19,7 +22,7 @@ where
     Receiver: RecvHalf,
     Sender: SendHalf,
 {
-    receiver: Receiver,
+    receiver: Option<Receiver>,
     sender: Sender,
 
     persistent: Persistent,
@@ -41,7 +44,7 @@ where
         persistent.timer_data = vec![TimerData::new(Duration::from_secs(3))];
 
         Self {
-            receiver,
+            receiver: Some(receiver),
             sender,
             persistent,
         }
@@ -49,13 +52,17 @@ where
 
     /// Reads the action from the tray if there is one.
     fn read_action(&mut self) -> Option<GuiAction> {
-        self.receiver
+        let Some(ref mut receiver) = self.receiver else {
+            return None;
+        };
+
+        receiver
             .read_obj::<GuiAction>()
             .inspect_err(|err| match err {
-                ReadError::Read(error) if error.kind() == ErrorKind::WouldBlock => {}
-                _ => {
-                    eprintln!("Failed to parse message from tray : {err}")
+                ReadError::Read(error) if error.kind() != ErrorKind::WouldBlock => {
+                    log::error!("Failed to parse message from tray :{err}")
                 }
+                _ => {}
             })
             .ok()
     }
@@ -85,8 +92,14 @@ where
 
         // Execute on any sent actions.
         if let Some(action) = self.read_action() {
+            log::debug!("Gui Received : {action:?}");
+
             match action {
-                GuiAction::Close => ctx.send_viewport_cmd(egui::ViewportCommand::Close),
+                GuiAction::Close => {
+                    // The tray has already closed the receiver channel.
+                    self.receiver = None;
+                    ctx.send_viewport_cmd(egui::ViewportCommand::Close)
+                }
             }
         }
     }
@@ -100,6 +113,8 @@ where
             .sender
             .write_obj(GuiResponse::Closed)
             .inspect_err(|err| log::error!("Unable to inform tray of GUI close: {err}"));
+
+        log::debug!("Gui Sent : {:?}", GuiResponse::Closed);
     }
 }
 
