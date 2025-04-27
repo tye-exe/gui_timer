@@ -15,11 +15,16 @@ use crate::{
     gui::timer::{Timer, TimerData},
 };
 
+/// The key that persistent data is saved at.
 const APP_KEY: &str = "GUI_TIMER";
 
 pub(crate) struct Gui {
+    /// The connection to the tray.
     connection: TcpStream,
+    /// Whether the GUI is in the process of closing.
+    is_closing: bool,
 
+    /// Persistent GUI data.
     persistent: Persistent,
 }
 
@@ -36,12 +41,18 @@ impl Gui {
 
         Self {
             connection,
+            is_closing: false,
             persistent,
         }
     }
 
     /// Reads the action from the tray if there is one.
     fn read_action(&mut self) -> Option<GuiAction> {
+        // Otherwise there is an error trying to read from the connection.
+        if self.is_closing {
+            return None;
+        }
+
         self.connection
             .read_obj::<GuiAction>()
             .inspect_err(|err| match err {
@@ -78,7 +89,7 @@ impl eframe::App for Gui {
 
             match action {
                 GuiAction::Close => {
-                    // The tray has already closed the receiver channel.
+                    self.is_closing = true;
                     ctx.send_viewport_cmd(egui::ViewportCommand::Close)
                 }
             }
