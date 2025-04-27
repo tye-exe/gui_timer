@@ -1,8 +1,4 @@
-use std::{
-    io::{ErrorKind, Read, Write},
-    net::TcpStream,
-    time::Duration,
-};
+use std::{io::ErrorKind, net::TcpStream, time::Duration};
 
 use egui::Widget;
 use serde::{Deserialize, Serialize};
@@ -22,7 +18,7 @@ pub(crate) struct Gui {
     /// The connection to the tray.
     connection: TcpStream,
     /// Whether the GUI is in the process of closing.
-    is_closing: bool,
+    is_closing: Closing,
 
     /// Persistent GUI data.
     persistent: Persistent,
@@ -41,7 +37,7 @@ impl Gui {
 
         Self {
             connection,
-            is_closing: false,
+            is_closing: Closing::No,
             persistent,
         }
     }
@@ -49,7 +45,7 @@ impl Gui {
     /// Reads the action from the tray if there is one.
     fn read_action(&mut self) -> Option<GuiAction> {
         // Otherwise there is an error trying to read from the connection.
-        if self.is_closing {
+        if self.is_closing != Closing::No {
             return None;
         }
 
@@ -89,7 +85,11 @@ impl eframe::App for Gui {
 
             match action {
                 GuiAction::Close => {
-                    self.is_closing = true;
+                    self.is_closing = Closing::Inform;
+                    ctx.send_viewport_cmd(egui::ViewportCommand::Close)
+                }
+                GuiAction::Quit => {
+                    self.is_closing = Closing::Silent;
                     ctx.send_viewport_cmd(egui::ViewportCommand::Close)
                 }
             }
@@ -101,6 +101,10 @@ impl eframe::App for Gui {
     }
 
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
+        if self.is_closing == Closing::Silent {
+            return;
+        }
+
         let _ = self
             .connection
             .write_obj(GuiResponse::Closed)
@@ -113,4 +117,15 @@ impl eframe::App for Gui {
 #[derive(Deserialize, Serialize, Default)]
 struct Persistent {
     timer_data: Vec<TimerData>,
+}
+
+/// How the GUI is closing.
+#[derive(Clone, Copy, PartialEq)]
+enum Closing {
+    /// The GUI is not closing.
+    No,
+    /// The GUI is closing and will inform the tray.
+    Inform,
+    /// The GUI is closing and **will not** inform the tray.
+    Silent,
 }

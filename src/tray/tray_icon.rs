@@ -45,7 +45,7 @@ impl TimerTray {
     fn quit(&mut self) {
         let sender = self.sender.clone();
         tokio::spawn(async move {
-            let _ = until_global_cancel!(sender.send(GuiAction::Close)).inspect_err(|e| {
+            let _ = until_global_cancel!(sender.send(GuiAction::Quit)).inspect_err(|e| {
                 log::error!("Internal tray communication was closed unexpectedly: {e}")
             });
             GLOBAL_CANCEL.cancel();

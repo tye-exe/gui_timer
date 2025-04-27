@@ -13,7 +13,10 @@ pub const SOCKET_ADDR: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHO
 /// Actions to be performed by the timer GUI.
 #[derive(Decode, Encode, PartialEq, Debug)]
 pub enum GuiAction {
+    /// Close the GUI and send confirmation to the tray.
     Close,
+    /// Close the GUI **without** sending confirmation to the tray.
+    Quit,
 }
 
 /// Actions that have been performed by the timer GUI.
