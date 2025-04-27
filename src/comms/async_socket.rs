@@ -45,7 +45,7 @@ where
             let buf = &mut [0; (usize::BITS / 8) as usize];
             self.read_exact(buf).await?;
             let len = usize::from_ne_bytes(*buf);
-            log::debug!("Async Read Len: {len}");
+            log::trace!("Async Read Len: {len}");
 
             let mut buf = vec![0u8; len].into_boxed_slice();
 
@@ -96,7 +96,7 @@ where
     {
         async {
             let data = bincode::encode_to_vec(data, BINCODE_CONF)?;
-            log::debug!("Async Write Len: {}", data.len());
+            log::trace!("Async Write Len: {}", data.len());
             self.write_all(&data.len().to_ne_bytes()).await?;
             self.write_all(data.as_slice()).await?;
 
