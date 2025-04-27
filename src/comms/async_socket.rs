@@ -57,6 +57,8 @@ where
                 });
             }
 
+            log::trace!("Async Read Data: {:?}", buf);
+
             Ok(bincode::decode_from_slice_with_context(&buf, BINCODE_CONF, BINCODE_CONF)?.0)
         }
     }
@@ -97,6 +99,8 @@ where
         async {
             let data = bincode::encode_to_vec(data, BINCODE_CONF)?;
             log::trace!("Async Write Len: {}", data.len());
+            log::trace!("Async Write Data: {:?}", data);
+
             self.write_all(&data.len().to_ne_bytes()).await?;
             self.write_all(data.as_slice()).await?;
 
@@ -108,44 +112,42 @@ where
 
 #[cfg(test)]
 mod tests {
-    use interprocess::local_socket::{
-        GenericFilePath, ListenerOptions,
-        tokio::{Stream, prelude::*},
-    };
-    use tempfile::TempDir;
-    use tokio::task;
+    use crate::comms::sync_socket::{ReadObj, WriteObj};
+    use tokio_util::bytes::{Buf, BufMut};
 
-    use crate::comms::{
-        GuiAction,
-        async_socket::{AsyncReadObj as _, AsyncWriteObj as _},
-    };
+    #[derive(bincode::Decode, bincode::Encode, Debug, PartialEq)]
+    enum TestData {
+        VariantOne,
+        Second,
+    }
 
     #[tokio::test]
-    async fn end_to_end() {
-        let temp_dir = TempDir::new().expect("Able to create temp dir");
-        let mut path = temp_dir.path().to_path_buf();
-        path.push("sock.sock");
+    async fn async_write() {
+        let mut buf = [0u8; 12];
 
-        let name = path
-            .to_fs_name::<GenericFilePath>()
-            .expect("Unable to start IPC");
+        buf.writer()
+            .write_obj(TestData::Second)
+            .expect("Can write to buf");
 
-        let listener = ListenerOptions::new()
-            .name(name.clone())
-            .create_tokio()
-            .unwrap();
+        assert_eq!(buf, [4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]);
 
-        // Writer
-        task::spawn(async move {
-            let mut connect = Stream::connect(name).await.unwrap();
-            connect.write_obj(GuiAction::Close).await.unwrap();
-        });
+        buf.writer()
+            .write_obj(TestData::VariantOne)
+            .expect("Can write to buf");
 
-        // Reader
-        task::spawn(async move {
-            let mut accept = listener.accept().await.unwrap();
-            let read_obj = accept.read_obj::<GuiAction>().await.unwrap();
-            assert_eq!(read_obj, GuiAction::Close)
-        });
+        assert_eq!(buf, [4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+    }
+
+    #[tokio::test]
+    async fn async_read() {
+        let buf: [u8; 12] = [4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+
+        let data: TestData = buf.reader().read_obj().expect("Able to read from buf");
+        assert_eq!(data, TestData::VariantOne);
+
+        let buf: [u8; 12] = [4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1];
+
+        let data: TestData = buf.reader().read_obj().expect("Able to read from buf");
+        assert_eq!(data, TestData::Second);
     }
 }

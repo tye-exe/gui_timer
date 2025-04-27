@@ -1,6 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
 
-use comms::gui_communication;
+use comms::init_communication;
 use ksni::TrayMethods;
 use std::sync::LazyLock;
 use tokio::sync::mpsc::{self};
@@ -25,7 +25,7 @@ async fn start() {
     let (tx_to_gui, rx_to_gui) = mpsc::channel(4);
     let (tx_from_gui, rx_from_gui) = mpsc::channel(4);
 
-    gui_communication(tx_from_gui, rx_to_gui);
+    tokio::spawn(init_communication(tx_from_gui, rx_to_gui));
     spawn_gui();
 
     let handle = TimerTray::new(tx_to_gui)

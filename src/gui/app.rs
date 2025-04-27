@@ -1,10 +1,10 @@
 use std::{
-    io::{ErrorKind, Read},
+    io::{ErrorKind, Read, Write},
+    net::TcpStream,
     time::Duration,
 };
 
 use egui::Widget;
-use interprocess::local_socket::traits::{RecvHalf, SendHalf};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -17,23 +17,14 @@ use crate::{
 
 const APP_KEY: &str = "GUI_TIMER";
 
-pub(crate) struct Gui<Receiver, Sender>
-where
-    Receiver: RecvHalf,
-    Sender: SendHalf,
-{
-    receiver: Option<Receiver>,
-    sender: Sender,
+pub(crate) struct Gui {
+    connection: TcpStream,
 
     persistent: Persistent,
 }
 
-impl<Receiver, Sender> Gui<Receiver, Sender>
-where
-    Receiver: RecvHalf,
-    Sender: SendHalf,
-{
-    pub fn new(cc: &eframe::CreationContext<'_>, receiver: Receiver, sender: Sender) -> Self {
+impl Gui {
+    pub fn new(cc: &eframe::CreationContext<'_>, connection: TcpStream) -> Self {
         let mut persistent: Persistent = cc
             .storage
             .map(|storage| eframe::get_value(storage, APP_KEY))
@@ -44,19 +35,14 @@ where
         persistent.timer_data = vec![TimerData::new(Duration::from_secs(3))];
 
         Self {
-            receiver: Some(receiver),
-            sender,
+            connection,
             persistent,
         }
     }
 
     /// Reads the action from the tray if there is one.
     fn read_action(&mut self) -> Option<GuiAction> {
-        let Some(ref mut receiver) = self.receiver else {
-            return None;
-        };
-
-        receiver
+        self.connection
             .read_obj::<GuiAction>()
             .inspect_err(|err| match err {
                 ReadError::Read(error) if error.kind() != ErrorKind::WouldBlock => {
@@ -68,11 +54,7 @@ where
     }
 }
 
-impl<Receiver, Sender> eframe::App for Gui<Receiver, Sender>
-where
-    Receiver: RecvHalf,
-    Sender: SendHalf,
-{
+impl eframe::App for Gui {
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
         egui::CentralPanel::default().show(ctx, |ui| {
             for timer_data in self.persistent.timer_data.iter_mut() {
@@ -97,7 +79,6 @@ where
             match action {
                 GuiAction::Close => {
                     // The tray has already closed the receiver channel.
-                    self.receiver = None;
                     ctx.send_viewport_cmd(egui::ViewportCommand::Close)
                 }
             }
@@ -110,7 +91,7 @@ where
 
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
         let _ = self
-            .sender
+            .connection
             .write_obj(GuiResponse::Closed)
             .inspect_err(|err| log::error!("Unable to inform tray of GUI close: {err}"));
 

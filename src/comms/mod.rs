@@ -1,3 +1,5 @@
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+
 use bincode::{
     Decode, Encode,
     config::{self, Configuration},
@@ -5,6 +7,8 @@ use bincode::{
 
 pub mod async_socket;
 pub mod sync_socket;
+
+pub const SOCKET_ADDR: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 23408);
 
 /// Actions to be performed by the timer GUI.
 #[derive(Decode, Encode, PartialEq, Debug)]

@@ -33,11 +33,17 @@ impl<From: std::io::Read> ReadObj for From {
         self.read_exact(buf)?;
         log::trace!("Sync Read Len: {}", usize::from_ne_bytes(*buf));
 
-        Ok(bincode::decode_from_std_read_with_context(
-            self,
-            BINCODE_CONF,
-            BINCODE_CONF,
-        )?)
+        let mut buf = vec![0; usize::from_ne_bytes(*buf)].into_boxed_slice();
+        self.read_exact(&mut buf)?;
+        log::trace!("Sync Read Data: {:?}", buf);
+
+        Ok(bincode::decode_from_slice_with_context(&buf, BINCODE_CONF, BINCODE_CONF)?.0)
+
+        // Ok(bincode::decode_from_std_read_with_context(
+        //     self,
+        //     BINCODE_CONF,
+        //     BINCODE_CONF,
+        // )?)
     }
 }
 
@@ -61,7 +67,9 @@ pub trait WriteObj {
 impl<To: std::io::Write> WriteObj for To {
     fn write_obj<Obj: Encode>(&mut self, data: Obj) -> Result<(), WriteError> {
         let data = bincode::encode_to_vec(data, BINCODE_CONF)?;
-        log::trace!("Async Write Len: {}", data.len());
+        log::trace!("Sync Write Len: {}", data.len());
+        log::trace!("Sync Write Data: {:?}", data);
+
         self.write_all(&data.len().to_ne_bytes())?;
         self.write_all(data.as_slice())?;
 
@@ -72,39 +80,47 @@ impl<To: std::io::Write> WriteObj for To {
 
 #[cfg(test)]
 mod tests {
-    use interprocess::local_socket::{
-        GenericFilePath, ListenerOptions, Stream, ToFsName as _,
-        traits::{Listener, Stream as _},
-    };
-    use tempfile::TempDir;
+    use crate::comms::sync_socket::{ReadObj as _, WriteObj as _};
 
-    use crate::comms::{
-        GuiAction,
-        sync_socket::{ReadObj as _, WriteObj as _},
-    };
+    #[derive(bincode::Decode, bincode::Encode, Debug, PartialEq)]
+    enum TestData {
+        VariantOne,
+        Second,
+    }
 
-    #[test]
-    fn end_to_end() {
-        let temp_dir = TempDir::new().expect("Able to create temp dir");
-        let mut path = temp_dir.path().to_path_buf();
-        path.push("sock.sock");
+    #[tokio::test]
+    async fn async_write() {
+        let mut buf = vec![0u8; 12].into_boxed_slice();
 
-        let name = path
-            .to_fs_name::<GenericFilePath>()
-            .expect("Unable to start IPC");
+        buf.as_mut()
+            .write_obj(TestData::Second)
+            .expect("Can write to buf");
 
-        let opts = ListenerOptions::new().name(name.clone());
-        let listener = opts.create_sync().unwrap();
+        assert_eq!(
+            buf,
+            vec![4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1].into_boxed_slice()
+        );
 
-        Stream::connect(name.clone())
-            .unwrap()
-            .write_obj(GuiAction::Close)
-            .expect("Can write");
+        buf.as_mut()
+            .write_obj(TestData::VariantOne)
+            .expect("Can write to buf");
 
-        let mut connect = listener.accept().unwrap();
+        assert_eq!(
+            buf,
+            vec![4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0].into_boxed_slice()
+        );
+    }
 
-        let gui_action = connect.read_obj::<GuiAction>().expect("Can read");
+    #[tokio::test]
+    async fn async_read() {
+        let buf: Box<[u8]> = vec![4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0].into_boxed_slice();
 
-        assert_eq!(gui_action, GuiAction::Close);
+        let data: TestData = buf.as_ref().read_obj().expect("Able to read from buf");
+        assert_eq!(data, TestData::VariantOne);
+
+        let buf: Box<[u8]> = vec![4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1].into_boxed_slice();
+
+        let data: TestData = buf.as_ref().read_obj().expect("Able to read from buf");
+        assert_eq!(data, TestData::Second);
     }
 }

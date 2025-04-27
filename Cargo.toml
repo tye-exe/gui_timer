@@ -8,7 +8,6 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-interprocess = { version = "2.2.3", features = ["tokio"] }
 eframe = { version = "0.31.1", features = ["persistence"] }
 egui = "0.31.1"
 serde = "1.0.219"

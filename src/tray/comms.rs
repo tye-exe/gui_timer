@@ -1,105 +1,97 @@
 use crate::comms::async_socket::{AsyncReadObj, AsyncWriteObj};
-use crate::comms::{GuiAction, GuiResponse, TO_GUI_SOCK, TO_TRAY_SOCK};
+use crate::comms::{GuiAction, GuiResponse, SOCKET_ADDR};
 use crate::tray::GLOBAL_CANCEL;
 use crate::until_global_cancel;
-use interprocess::local_socket::tokio::Stream;
-use interprocess::local_socket::traits::tokio::Listener;
-use interprocess::local_socket::{
-    GenericFilePath, GenericNamespaced, ListenerOptions, NameType, ToFsName, ToNsName,
-};
-use tokio::sync::mpsc::{self, Receiver, Sender, UnboundedReceiver};
+use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
+use tokio::sync::mpsc::{Receiver, Sender};
+use tokio_util::sync::CancellationToken;
 
-/// Sends [`GuiAction`] to the GUI.
-async fn gui_send(mut receiver: Receiver<GuiAction>, mut cancel_inform: UnboundedReceiver<()>) {
-    let listener = create_listener(TO_GUI_SOCK);
-    loop {
-        let mut stream = until_global_cancel!(listener.accept())
-            .expect("Unable to listen for GUI communication.");
-
-        tokio::select! {
-            response = cancel_inform.recv() => {
-                if let None = response {
-                    log::error!("Unable to communicate with GUI receive task.");
-                    GLOBAL_CANCEL.cancel();
-                }
-            }
-            _ = to_gui(&mut stream, &mut receiver) => {}
-        };
-    }
-}
-
-/// Split into separate function due to formatting.
-async fn to_gui(stream: &mut Stream, receiver: &mut Receiver<GuiAction>) {
-    while let Some(action) = until_global_cancel!(receiver.recv()) {
-        let stop = matches!(action, GuiAction::Close);
-
-        log::debug!("Sent Action: {action:?}");
-
-        let _ = stream
-            .write_obj::<GuiAction>(action)
-            .await
-            .inspect_err(|e| log::error!("The GUI was closed unexpectedly? {e}"));
-
-        if stop {
-            break;
-        }
-    }
-}
-
-/// Starts communication with the GUI.
+/// Starts communication between the gui & the tray.
 ///
-/// This method should only be called once, as communication will be reestablished when a new GUI is opened.
-pub(crate) fn gui_communication(sender: Sender<GuiResponse>, receiver: Receiver<GuiAction>) {
-    let (cancel_tx, cancel_rx) = mpsc::unbounded_channel();
+/// This method should only be called once, as when a new tray will be connected to when it opens.
+pub(crate) async fn init_communication(
+    mut sender: Sender<GuiResponse>,
+    mut receiver: Receiver<GuiAction>,
+) {
+    let listener = tokio::net::TcpListener::bind(SOCKET_ADDR)
+        .await
+        .expect(&format!(
+            "Unable to connect listen for gui on {SOCKET_ADDR}"
+        ));
 
-    tokio::spawn(gui_send(receiver, cancel_rx));
-    tokio::spawn(gui_receive(sender, cancel_tx));
+    while !GLOBAL_CANCEL.is_cancelled() {
+        until_global_cancel!(async {
+            let (stream, _) = listener
+                .accept()
+                .await
+                .expect("Unable to accept incoming connection.");
+
+            let (rx, tx) = stream.into_split();
+            let close = GLOBAL_CANCEL.child_token();
+
+            tokio::join!(
+                read(rx, &mut sender, close.clone()),
+                write(tx, &mut receiver, close)
+            );
+        })
+    }
 }
 
-/// Receives [`GuiResponse`]s from the GUI and forwards them to receivers in the tray.
-async fn gui_receive(sender: Sender<GuiResponse>, cancel_tx: mpsc::UnboundedSender<()>) {
-    let listener = create_listener(TO_TRAY_SOCK);
-    loop {
-        let mut stream = until_global_cancel!(listener.accept())
-            .expect("Unable to listen for gui communication.");
+/// Reads commuinication from the GUI and sends it internally using a [`Sender`].
+async fn read(mut rx: OwnedReadHalf, sender: &mut Sender<GuiResponse>, closed: CancellationToken) {
+    closed
+        .run_until_cancelled(async {
+            let mut run = true;
+            while run {
+                let response = match rx.read_obj().await {
+                    Ok(response) => response,
+                    Err(err) => {
+                        log::error!("GUI sent invalid data: {err}");
+                        closed.cancel();
+                        // TODO(tye): if this occurs try close the GUI (somehow).
+                        return;
+                    }
+                };
 
-        loop {
-            let response = match until_global_cancel!(stream.read_obj()) {
-                Ok(response) => response,
-                Err(err) => {
-                    log::error!("Error reading GUI response: {err}");
-                    break;
-                }
-            };
+                run = !matches!(response, GuiResponse::Closed);
 
-            let stop = matches!(response, GuiResponse::Closed);
-
-            log::debug!("Received Response: {response:?}");
-            log::log!(log::Level::Trace, "Is closed: {stop}");
-
-            until_global_cancel!(sender.send(response)).expect("Unable to listen for GUI response");
-
-            if stop {
-                if let Err(_) = cancel_tx.send(()) {
-                    log::error!("Unable to communicate with gui send task.");
+                if let Err(_) = sender.send(response).await {
+                    log::error!("Failure of internal communication.");
                     GLOBAL_CANCEL.cancel();
                 }
-                break;
             }
-        }
-    }
+            closed.cancel();
+        })
+        .await;
 }
 
-/// Creates a listener that listens for connections from the GUI.
-fn create_listener(name: &'static str) -> interprocess::local_socket::tokio::Listener {
-    let name = match GenericNamespaced::is_supported() {
-        true => name.to_ns_name::<GenericNamespaced>(),
-        false => format!("/tmp/{}", name).to_fs_name::<GenericFilePath>(),
-    }
-    .expect("Unable to start IPC");
+/// Writes data to the GUI from an internal [`Receiver`].
+async fn write(
+    mut tx: OwnedWriteHalf,
+    receiver: &mut Receiver<GuiAction>,
+    closed: CancellationToken,
+) {
+    closed
+        .run_until_cancelled(async {
+            let mut run = true;
+            while run {
+                let action = match receiver.recv().await {
+                    Some(action) => action,
+                    None => {
+                        log::error!("Failure of internal communication.");
+                        GLOBAL_CANCEL.cancel();
+                        return;
+                    }
+                };
 
-    ListenerOptions::new()
-        .name(name.clone())
-        .create_tokio()
-        .expect("Unable to listen for gui communication.")
+                run = !matches!(action, GuiAction::Close);
+
+                if let Err(err) = tx.write_obj(action).await {
+                    log::error!("Unable to send data to GUI: {err}");
+                    closed.cancel();
+                    return;
+                }
+            }
+        })
+        .await;
 }
