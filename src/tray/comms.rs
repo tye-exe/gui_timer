@@ -3,28 +3,37 @@ use crate::comms::{GuiAction, GuiResponse, SOCKET_ADDR};
 use crate::tray::GLOBAL_CANCEL;
 use crate::until_global_cancel;
 use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
-use tokio::sync::mpsc::{Receiver, Sender};
+use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use tokio_util::sync::CancellationToken;
 
 /// Starts communication between the gui & the tray.
 ///
 /// This method should only be called once, as when a new tray will be connected to when it opens.
 pub(crate) async fn init_communication(
-    mut sender: Sender<GuiResponse>,
-    mut receiver: Receiver<GuiAction>,
+    mut sender: UnboundedSender<GuiResponse>,
+    mut receiver: UnboundedReceiver<GuiAction>,
 ) {
-    let listener = tokio::net::TcpListener::bind(SOCKET_ADDR)
-        .await
-        .expect(&format!(
-            "Unable to connect listen for gui on {SOCKET_ADDR}"
-        ));
+    let listener = match tokio::net::TcpListener::bind(SOCKET_ADDR).await {
+        Ok(listener) => listener,
+        Err(err) => {
+            log::error!("Unable to connect listen for gui on {SOCKET_ADDR}: {err}");
+            GLOBAL_CANCEL.cancel();
+            return;
+        }
+    };
 
     while !GLOBAL_CANCEL.is_cancelled() {
         until_global_cancel!(async {
-            let (stream, _) = listener
-                .accept()
-                .await
-                .expect("Unable to accept incoming connection.");
+            let (stream, _) = match listener.accept().await {
+                Ok(val) => val,
+                Err(err) => {
+                    log::error!(
+                        "An error occurred whilst listening for gui on {SOCKET_ADDR}: {err}"
+                    );
+                    GLOBAL_CANCEL.cancel();
+                    return;
+                }
+            };
 
             let (rx, tx) = stream.into_split();
             let close = GLOBAL_CANCEL.child_token();
@@ -38,7 +47,11 @@ pub(crate) async fn init_communication(
 }
 
 /// Reads commuinication from the GUI and sends it internally using a [`Sender`].
-async fn read(mut rx: OwnedReadHalf, sender: &mut Sender<GuiResponse>, closed: CancellationToken) {
+async fn read(
+    mut rx: OwnedReadHalf,
+    sender: &mut UnboundedSender<GuiResponse>,
+    closed: CancellationToken,
+) {
     closed
         .run_until_cancelled(async {
             let mut run = true;
@@ -55,7 +68,7 @@ async fn read(mut rx: OwnedReadHalf, sender: &mut Sender<GuiResponse>, closed: C
 
                 run = !matches!(response, GuiResponse::Closed);
 
-                if let Err(_) = sender.send(response).await {
+                if let Err(_) = sender.send(response) {
                     log::error!("Failure of internal communication.");
                     GLOBAL_CANCEL.cancel();
                 }
@@ -68,7 +81,7 @@ async fn read(mut rx: OwnedReadHalf, sender: &mut Sender<GuiResponse>, closed: C
 /// Writes data to the GUI from an internal [`Receiver`].
 async fn write(
     mut tx: OwnedWriteHalf,
-    receiver: &mut Receiver<GuiAction>,
+    receiver: &mut UnboundedReceiver<GuiAction>,
     closed: CancellationToken,
 ) {
     closed

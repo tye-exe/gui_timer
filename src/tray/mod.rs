@@ -22,8 +22,8 @@ pub(crate) fn launch_tray() {
 }
 
 async fn start() {
-    let (tx_to_gui, rx_to_gui) = mpsc::channel(4);
-    let (tx_from_gui, rx_from_gui) = mpsc::channel(4);
+    let (tx_to_gui, rx_to_gui) = mpsc::unbounded_channel();
+    let (tx_from_gui, rx_from_gui) = mpsc::unbounded_channel();
 
     tokio::spawn(init_communication(tx_from_gui, rx_to_gui));
     spawn_gui();

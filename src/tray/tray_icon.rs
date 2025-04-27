@@ -4,18 +4,18 @@ use crate::{
 };
 use image::GenericImageView;
 use ksni::Handle;
-use tokio::sync::mpsc::{Receiver, Sender};
+use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 
 use super::{GLOBAL_CANCEL, GuiState, spawn_gui};
 
 pub(crate) struct TimerTray {
-    sender: Sender<GuiAction>,
+    sender: UnboundedSender<GuiAction>,
 
     state: GuiState,
 }
 
 impl TimerTray {
-    pub(crate) fn new(sender: Sender<GuiAction>) -> Self {
+    pub(crate) fn new(sender: UnboundedSender<GuiAction>) -> Self {
         Self {
             sender,
             state: GuiState::OpenRequested,
@@ -26,11 +26,11 @@ impl TimerTray {
     fn toggle_gui(&mut self) {
         match self.state {
             GuiState::Opened => {
-                let sender = self.sender.clone();
-                tokio::spawn(async move {
-                    until_global_cancel!(sender.send(GuiAction::Close))
-                        .expect("Cannot send action to GUI.");
-                });
+                if let Err(err) = self.sender.send(GuiAction::Close) {
+                    log::error!("Internal tray communication was closed unexpectedly: {err}");
+                    GLOBAL_CANCEL.cancel();
+                }
+
                 self.state = GuiState::CloseRequested;
             }
             GuiState::Closed => {
@@ -43,13 +43,10 @@ impl TimerTray {
 
     /// Quits the Gui and the tray.
     fn quit(&mut self) {
-        let sender = self.sender.clone();
-        tokio::spawn(async move {
-            let _ = until_global_cancel!(sender.send(GuiAction::Quit)).inspect_err(|e| {
-                log::error!("Internal tray communication was closed unexpectedly: {e}")
-            });
-            GLOBAL_CANCEL.cancel();
-        });
+        if let Err(err) = self.sender.send(GuiAction::Quit) {
+            log::error!("Internal tray communication was closed unexpectedly: {err}")
+        }
+        GLOBAL_CANCEL.cancel();
     }
 }
 
@@ -112,10 +109,19 @@ impl ksni::Tray for TimerTray {
     }
 }
 
-pub(crate) async fn update_tray(handle: Handle<TimerTray>, mut rx_from_gui: Receiver<GuiResponse>) {
+pub(crate) async fn update_tray(
+    handle: Handle<TimerTray>,
+    mut rx_from_gui: UnboundedReceiver<GuiResponse>,
+) {
     loop {
-        let response =
-            until_global_cancel!(rx_from_gui.recv()).expect("Unable to listen for GUI response.");
+        let response = match until_global_cancel!(rx_from_gui.recv()) {
+            Some(response) => response,
+            None => {
+                log::error!("Internal tray communication was closed unexpectedly");
+                GLOBAL_CANCEL.cancel();
+                break;
+            }
+        };
 
         until_global_cancel!(handle.update(|tray| {
             tray.state = match response {
