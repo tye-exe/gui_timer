@@ -6,8 +6,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     comms::{
-        GuiAction,
-        sync_socket::{ReadError, ReadObj as _},
+        GuiAction, GuiResponse,
+        sync_socket::{ReadError, ReadObj as _, WriteObj as _},
     },
     gui::timer::{Timer, TimerData},
 };
@@ -93,6 +93,13 @@ where
 
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
         eframe::set_value(storage, APP_KEY, &self.persistent);
+    }
+
+    fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
+        let _ = self
+            .sender
+            .write_obj(GuiResponse::Closed)
+            .inspect_err(|err| log::error!("Unable to inform tray of GUI close: {err}"));
     }
 }
 
