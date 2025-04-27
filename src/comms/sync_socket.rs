@@ -65,6 +65,7 @@ impl<To: std::io::Write> WriteObj for To {
         self.write_all(&data.len().to_ne_bytes())?;
         self.write_all(data.as_slice())?;
 
+        self.flush()?;
         Ok(())
     }
 }

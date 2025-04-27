@@ -100,6 +100,7 @@ where
             self.write_all(&data.len().to_ne_bytes()).await?;
             self.write_all(data.as_slice()).await?;
 
+            self.flush().await?;
             Ok(())
         }
     }
