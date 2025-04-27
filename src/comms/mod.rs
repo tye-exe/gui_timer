@@ -26,9 +26,6 @@ pub enum GuiResponse {
     Closed,
 }
 
-pub const TO_TRAY_SOCK: &str = "timer_gui_to_tray.sock";
-pub const TO_GUI_SOCK: &str = "timer_tray_to_gui.sock";
-
 /// A type alias for the bincode configuration used in this codebase.
 type BincodeConfiguration = Configuration<config::BigEndian, config::Fixint>;
 
