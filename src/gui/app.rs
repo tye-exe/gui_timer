@@ -14,27 +14,23 @@ use crate::{
 
 const APP_KEY: &str = "GUI_TIMER";
 
-pub(crate) struct Gui<'comms, Receiver, Sender>
+pub(crate) struct Gui<Receiver, Sender>
 where
     Receiver: RecvHalf,
     Sender: SendHalf,
 {
-    receiver: Option<Receiver>,
-    sender: Option<&'comms Sender>,
+    receiver: Receiver,
+    sender: Sender,
 
     persistent: Persistent,
 }
 
-impl<'comms, Receiver, Sender> Gui<'comms, Receiver, Sender>
+impl<Receiver, Sender> Gui<Receiver, Sender>
 where
     Receiver: RecvHalf,
     Sender: SendHalf,
 {
-    pub fn new(
-        cc: &eframe::CreationContext<'_>,
-        receiver: Option<Receiver>,
-        sender: Option<&'comms Sender>,
-    ) -> Self {
+    pub fn new(cc: &eframe::CreationContext<'_>, receiver: Receiver, sender: Sender) -> Self {
         let mut persistent: Persistent = cc
             .storage
             .map(|storage| eframe::get_value(storage, APP_KEY))
@@ -53,11 +49,7 @@ where
 
     /// Reads the action from the tray if there is one.
     fn read_action(&mut self) -> Option<GuiAction> {
-        let Some(ref mut receiver) = self.receiver else {
-            return None;
-        };
-
-        receiver
+        self.receiver
             .read_obj::<GuiAction>()
             .inspect_err(|err| match err {
                 ReadError::Read(error) if error.kind() == ErrorKind::WouldBlock => {}
@@ -69,7 +61,7 @@ where
     }
 }
 
-impl<'comms, Receiver, Sender> eframe::App for Gui<'comms, Receiver, Sender>
+impl<Receiver, Sender> eframe::App for Gui<Receiver, Sender>
 where
     Receiver: RecvHalf,
     Sender: SendHalf,
@@ -94,10 +86,7 @@ where
         // Execute on any sent actions.
         if let Some(action) = self.read_action() {
             match action {
-                GuiAction::Close => {
-                    self.receiver = None;
-                    ctx.send_viewport_cmd(egui::ViewportCommand::Close)
-                }
+                GuiAction::Close => ctx.send_viewport_cmd(egui::ViewportCommand::Close),
             }
         }
     }
@@ -107,8 +96,6 @@ where
     }
 }
 
-// For persistent data
-// TODO(tye): finish later
 #[derive(Deserialize, Serialize, Default)]
 struct Persistent {
     timer_data: Vec<TimerData>,
